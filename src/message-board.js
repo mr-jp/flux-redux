@@ -1,5 +1,8 @@
 console.log(`Message board`);
-import { createStore, combineReducers } from 'redux'
+import { createStore, combineReducers, applyMiddleware } from 'redux'
+import { get } from './http';
+import logger from 'redux-logger';
+import thunkMiddleware from 'redux-thunk';
 
 export const ONLINE = `ONLINE`;
 export const AWAY = `AWAY`;
@@ -7,6 +10,10 @@ export const BUSY = `BUSY`;
 export const UPDATE_STATUS = `UPDATE_STATUS`;
 export const OFFLINE = `OFFLINE`;
 export const CREATE_NEW_MESSAGE = `CREATE_NEW_MESSAGE`;
+
+export const READY = `READY`;
+export const WAITING = `WAITING`;
+export const NEW_MESSAGE_SERVER_ACCEPTED = `NEW_MESSAGE_SERVER_ACCEPTED`;
 
 
 const statusUpdateAction = (value)=>{
@@ -18,6 +25,12 @@ const statusUpdateAction = (value)=>{
 
 const newMessageAction = (content, postedBy)=>{
     const date = new Date();
+    
+    get('/api/create', (id) =>{
+        store.dispatch({
+            type: NEW_MESSAGE_SERVER_ACCEPTED
+        })
+    })
 
     return {
         type: CREATE_NEW_MESSAGE,
@@ -32,7 +45,7 @@ const newMessageAction = (content, postedBy)=>{
 const defaultState = {
     messages:[{
         date:new Date('2016-10-10 10:11:55'),
-        postedBy:`Stan`,
+        postedBy:`Stan`, 
         content:`I <3 the new productivity app!`
     },{
         date:new Date('2016-10-10 10:12:00'),
@@ -44,6 +57,7 @@ const defaultState = {
         content:`Anyone got tickets to ng-conf?`
     }],
     userStatus: ONLINE,
+    apiCommunicationStatus: READY
 }
 
 
@@ -56,6 +70,16 @@ const userStatusReducer = (state = defaultState.userStatus, {type, value}) => {
     return state;
 };
 
+const apiCommunicationStatusReducer = (state = READY, {type}) => {
+    switch(type) {
+        case CREATE_NEW_MESSAGE:
+            return WAITING;
+        case NEW_MESSAGE_SERVER_ACCEPTED:
+            return READY;
+    }
+    return state;
+}
+
 const messagesReducer = (state = defaultState.messages, {type,value,postedBy,date})=>{
     switch (type) {
         case CREATE_NEW_MESSAGE:
@@ -67,10 +91,14 @@ const messagesReducer = (state = defaultState.messages, {type,value,postedBy,dat
 
 const combinedReducer = combineReducers({
     userStatus: userStatusReducer,
-    messages: messagesReducer
+    messages: messagesReducer,
+    apiCommunicationStatus: apiCommunicationStatusReducer
 });
 
-const store = createStore(combinedReducer);
+const store = createStore(
+    combinedReducer,
+    applyMiddleware(thunkMiddleware, logger)
+);
 
 const render = ()=>{
     const {messages, userStatus, apiCommunicationStatus} = store.getState();
@@ -83,7 +111,7 @@ const render = ()=>{
         )).join("");
 
     document.forms.newMessage.newMessage.value = "";
-    document.forms.newMessage.fields.disabled = (userStatus === OFFLINE);
+    document.forms.newMessage.fields.disabled = (userStatus === OFFLINE || apiCommunicationStatus === WAITING);
 }
 
 document.forms.selectStatus.status.addEventListener("change",(e)=>{
@@ -100,3 +128,8 @@ document.forms.newMessage.addEventListener("submit",(e)=>{
 render();
 
 store.subscribe(render);
+
+console.log("Making request...");
+get("http://pluralsight.com", (id)=>{
+    console.log('Received callback..',id);
+});
